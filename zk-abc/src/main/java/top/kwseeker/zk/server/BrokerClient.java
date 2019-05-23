@@ -42,7 +42,9 @@ public class BrokerClient {
                     zkClient.close();
                 }));
                 try {
-                    childrenCache.start();
+                    //childrenCache.start();
+                    childrenCache.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);   //调试时发现启动时已经存在的节点会触发CHILD_ADDED
+                                                                                            //加上这个参数在start执行执行之前先执行rebuild的方法，而rebuild的方法不会发出任何事件通知。
                 } catch (Exception e) {
                     LOG.error("children cache start failed");
                     e.printStackTrace();
