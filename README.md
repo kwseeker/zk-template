@@ -8,6 +8,44 @@ zookeeper常用应用场景可复用模块实现
 
 + **统一命名服务/服务注册与发现**
 
+    - 企业级的服务与发现架构
+    
+        ![](https://upload-images.jianshu.io/upload_images/10299630-2f0f0fa38fdb9d9a?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+        就是图中zuul、Eureka、service部分。实际的架构中这里面每一个部分都可能是一个集群。
+        而服务注册到哪个Eureka节点（最终都会同步到其他节点），一个微服务节点调另一个微服务的接口具体是怎么分派到其中一个节点的？
+        之前看Eureka得知其内部有一套负载均衡策略（集成了Ribbon）。猜想负载均衡应该存在系统的各个集群中。
+        
+    - Zookeeper实现服务注册与发现的原理
+    
+        ![Zookeeper实现服务注册与发现](https://upload-images.jianshu.io/upload_images/2038379-05931473aa8bc6b9.jpg?imageMogr2/auto-orient/)
+        Zookeeper实现服务注册与发现就是使用其节点监听功能。对应于Curator客户端就是 PathChildrenCacheListener。
+        
+        每个微服务都是一个zookeeper的客户端，作为服务生产者可以向zookeeper 注册节点，而这个节点的数据就是微服务本身可以提供的服务接口等信息；
+        同时它也可以监听其他客户端发布的信息，作为一个服务消费者监听各节点数据变化，并更新本地服务列表。  
+
+    - 实现方案
+        
+        通过查找资料以及搜索github上别人的实现，总结出一套实现方案。
+        
+        Apache Curator 官方源码提供的服务注册与发现最简实现。
+        https://github.com/apache/curator/blob/master/curator-examples/src/main/java/discovery/DiscoveryExample.java
+        
+        设计架构时需要考虑的几个问题（Eureka很常见问题）：  
+        1）如果zookeeper节点和每个微服务节点都有多个，zk1...zkn, serv1_1...serv1_n, serv2_1...serv2_n;
+        负载均衡应该如何实现？  
+        2）集群中某节点故障，如何剔除或者恢复（失败重试机制）？  
+           
+        zookeeper实现服务注册与发现架构  
+        1）zookeeper部署三台；  
+        2）做两个微服务，每个微服务两个节点；
+        3）监控集群状态怎么做？
+                
+    - 对比Eureka、Consul的实现原理
+    
+    - 为何Eureka比Zookeeper、Consul更适合做服务发现与注册
+    
+        [阿里巴巴为什么不用 ZooKeeper 做服务发现？](http://jm.taobao.org/2018/06/13/%E5%81%9A%E6%9C%8D%E5%8A%A1%E5%8F%91%E7%8E%B0%EF%BC%9F/)
+    
 + **配置中心**（ZK的数据发布订阅功能）
 
 + **负载均衡**（ZK的负载均衡算法）
@@ -58,9 +96,15 @@ bin/zkServer.sh start
 
 Github地址 [apache/curator](https://github.com/apache/curator)
 
+[Curator API](http://curator.apache.org/apidocs)
+
 文档都是很无力的，更高级的使用还是看源码实现和测试。
 
 ## Zookeeper应用实现
 
 官方实例：[Example](https://curator.apache.org/curator-examples/index.html)
+
+### 1 服务发现与注册
+
+#### 需求
 
