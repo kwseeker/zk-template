@@ -61,6 +61,11 @@ zookeeper常用应用场景可复用模块实现
 
 + **集群监控**
 
+    实现分布式进程状态监控；
+    比如：使用临时节点特性监控进程是否还在运行，进程如果还在运行会维持连接心跳，
+    如果进程退出，无心跳连接后会删除临时节点。
+    
+
 ## 服务端安装配置启动
 
 选择使用docker部署zookeeper https://hub.docker.com/_/zookeeper/
@@ -106,5 +111,20 @@ Github地址 [apache/curator](https://github.com/apache/curator)
 
 ### 1 服务发现与注册
 
-#### 需求
+spring boot 中应用 zookeeper 参考 zk-springboot-web
 
+#### 功能需求：  
+1）命名服务（服务注册、注销与更新）  
+2）服务监控（如何做出类似Eureka节点监控页面） 
+3）微服务注册与发现，配合web微服务实例通过Grpc相互调用测试  
+4）微服务本地维护服务列表Guava缓存，通过zookeeper的消息订阅与发布功能实现服务列表的更新  
+5）在客户端与微服务之间构建路由层，所有客户端均通过路由层路由到具体的服务  
+
+#### 软件架构：  
++ 客户端（M个）  
++ 路由层（暂时做一个路由节点）  
++ 微服务层（N个服务节点，互相通过rpc调用）  
+    zk-boot-busiservice
+    zk-boot-basicservice
++ Zookeeper层（微服务管理）
+    zk-boot-discovery
