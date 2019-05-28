@@ -121,10 +121,10 @@ spring boot 中应用 zookeeper 参考 zk-springboot-web
 5）在客户端与微服务之间构建路由层，所有客户端均通过路由层路由到具体的服务  
 
 #### 软件架构：  
-+ 客户端（M个）  
-+ 路由层（暂时做一个路由节点）  
++ 客户端（M个）                 (9031-?)
++ 路由层（暂时做一个路由节点）    (9021)
 + 微服务层（N个服务节点，互相通过rpc调用）  
-    zk-boot-busiservice
-    zk-boot-basicservice
+    zk-boot-busiservice     (9012)
+    zk-boot-basicservice    (9011)
 + Zookeeper层（微服务管理）
-    zk-boot-discovery
+    zk-boot-discovery       (9001)

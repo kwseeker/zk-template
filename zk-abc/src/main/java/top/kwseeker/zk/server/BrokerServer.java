@@ -38,7 +38,7 @@ public class BrokerServer {
         //先判断根节点是否存在不存在创建根节点
         Stat stat = zkClient.checkExists().forPath(ROOT);
         if(stat == null) {
-            zkClient.create().withMode(CreateMode.PERSISTENT).forPath(ROOT);
+            zkClient.create().withMode(CreateMode.PERSISTENT).forPath(ROOT);    //根节点创建为持久节点
         }
         //判断子节点是否存在不存在则创建
         String[] paths = {ROOT + "/task1", ROOT + "/task2"};
