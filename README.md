@@ -70,8 +70,6 @@ zookeeper常用应用场景可复用模块实现
 
 选择使用docker部署zookeeper https://hub.docker.com/_/zookeeper/
 
-
-
 单机模式配置 zookeeper根目录下创建 conf/zoo.cfg
 ```
 tickTime=2000               #用作心跳周期
@@ -118,13 +116,24 @@ spring boot 中应用 zookeeper 参考 zk-springboot-web
 2）服务监控（如何做出类似Eureka节点监控页面） 
 3）微服务注册与发现，配合web微服务实例通过Grpc相互调用测试  
 4）微服务本地维护服务列表Guava缓存，通过zookeeper的消息订阅与发布功能实现服务列表的更新  
-5）在客户端与微服务之间构建路由层，所有客户端均通过路由层路由到具体的服务  
+5）在web客户端与微服务之间构建路由层，所有客户端均通过路由层路由到具体的服务  
+6）实现分布式服务器动态上下线感知
 
 #### 软件架构：  
-+ 客户端（M个）                 (9031-?)
-+ 路由层（暂时做一个路由节点）    (9021)
++ 客户端（M个）                 (9041-?)
++ 路由层（暂时做一个路由节点）    (9031)
 + 微服务层（N个服务节点，互相通过rpc调用）  
-    zk-boot-busiservice     (9012)
+    zk-boot-busiservice     (9021)
     zk-boot-basicservice    (9011)
 + Zookeeper层（微服务管理）
     zk-boot-discovery       (9001)
+    
+#### 具体细节的实现
+
++  微服务应用与Zookeeper集群之间连接方案
+    
+    1）微服务应用直接作为Zookeeper集群的客户端（最简单的实现）
+    2）微服务应用与Zookeeper集群之间添加一个中间层，微服务通过中间层进行服务注册与发现
+    通过http访问实现服务发现，通过rabbitMQ消息订阅发布实现向微服务消费端广播服务列表更新消息；  
+    3）取前两者中间，添加一个中间层负责提供服务发现，每个微服务本身作为zookeeper的client，实现
+    服务注册与服务注销。

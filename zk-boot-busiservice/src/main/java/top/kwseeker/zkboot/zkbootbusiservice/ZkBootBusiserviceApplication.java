@@ -3,6 +3,9 @@ package top.kwseeker.zkboot.zkbootbusiservice;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+/**
+ * 服务消费者
+ */
 @SpringBootApplication
 public class ZkBootBusiserviceApplication {
 
