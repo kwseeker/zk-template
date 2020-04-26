@@ -17,6 +17,8 @@ ZK特点：
 + **最终一致性**:一旦一个事务被成功应用,zk 可以保证在一个很短暂时间后,Client 最终
   能够从 zk 上读取到最新的数据状态。注意,不能保证实时读取到。
 
+
+
 ## 基础理论
 
 ### Paxos算法
@@ -56,8 +58,7 @@ Fast Paxos算法解决活锁：只允许一个进程提交提案。
 ZK使用一个单一主进程（Leader, 唯一的提案者）来接收并处理客户端的所有事务请求,即写请求,解决了活锁问题。
 
 当服务器数据的状态发生变更（写请求）后,集群采用 ZAB 原子广播协议,以事务提案 Proposal 的形式广
-播到所有的副本进程上。ZAB 协议能够保证一个全局的变更序列,即可以为每一个事务分配
-一个全局的递增编号 xid。
+播到所有的副本进程上。ZAB 协议能够保证一个全局的变更序列,即可以为每一个事务分配一个全局的递增编号 xid。
 
 若客户端提交的是读请求,那么当前节点就直接根据自己保存的数据对其进行响应;
 
@@ -74,13 +75,15 @@ ZK使用一个单一主进程（Leader, 唯一的提案者）来接收并处理�
 
 Leader好比项目经理，Follower好比正式员工，Observer好比外包员工，项目经理离职了，可以从内部员工中选出新的项目经理。
 
+Observer替换Follower可以保持同样负载能力下，减少选举和表决压力，即并不需要太多拥有表决权和选举权的节点，否则可能导致表决和选举效率低下。
+
 Paxos Learner：学习者,同步者。Learner = Follower + Observer
 QuorumPeer = Participant = Leader + Follower
 
 ##### 三个数据
 
 + zxid (事务ID) :64 位长度的 Long 类型,其高 32 位为 epoch,低 32 位为 xid
-+ epoch (?): 每一个新的 Leader 都会有一个新的 epoch
++ epoch (任期的意思，表明当前是第几代Leader): 每一个新的 Leader 都会有一个新的 epoch,在之前的Leader的epoch值基础上加１
 + xid (纯事务ID):其为一个流水号
 
 ##### 四种状态
@@ -94,17 +97,168 @@ ZK一旦一个提案通过，在这个提案提交之前，所有参与同意此
 
 ##### 三个模式
 
-+ 恢复模式：其包含两个重要阶段:Leader 的选举,与初始化同步
-+ 广播模式：其可以分为两类:初始化广播,与更新广播
-+ 同步模式：其可以分为两类:初始化同步,与更新同步
+这三种模式是对 zkServer 工作状态的描述。
+
++ **同步模式**：其可以分为两类:初始化同步,与更新同步
+
+  初始化同步：流程看下面图示；
+
+  更新同步：？
+
++ **广播模式**：其可以分为两类:初始化广播,与更新广播
+
+  初始化广播：？
+
+  更新广播：
+
+  ![ZK更新广播](imgs/ZK更新广播流程.png)
+
+  为何要做Proposal-zxid和max-zxid (即前面说的的maxN)的大小比较？什么情况下Proposal-zxid不大于max-zxid（明明只有Leader可以发送Proposal）？
+
+  为了防止万一因为网络抖动等原因，导致上一个提案晚于下一个提案到达ZK的某个或某些Learner。如果没有比较会发生旧的提案覆写新的提案。
+
+  上面的问题如果是两个提案是操作的不同的ZNode呢？有Proposal-zxid和max-zxid 比较的话会不会导致上一个提案因为迟于下一个提案到来导致上一个提案的数据没有写入？
+
+  不会出现上述情况，因为Learner从Leader同步数据是类似递归（实现是for循环）的实现，从max-zxid（假设５）开始，往下查4,3...直到找到Leader和Learner所有ZNode节点数据一致的zxid开始（假如２），向上同步3,4,5 Leader所有数据到Learner（**每个ZK服务节点都有队列存储历史数据**）。
+
++ **恢复模式**：其包含两个重要阶段:Leader 的选举,与初始化同步
+
+  阶段一：Leader选举
+
+  阶段二：初始化同步
+
+  ![](imgs/ZK初始化同步流程.png)
+
+  １）为了保证 Leader 向 Learner 发送提案的有序,Leader 会为每一个 Learner 服务器准备一
+  个队列；
+  ２）Leader 将那些没有被各个 Learner 同步的事务封装为 Proposal
+  ３）Leader 将这些 Proposal 通过队列逐条发给各个 Learner,并在每一个 Proposal 后都紧跟一个COMMIT 消息,表示该事务已经被提交,Learner 可以直接接收并执行
+
+  ４）Learner 接收来自于 Leader 的 Proposal,并将其更新到本地
+  ５）当 Learner 更新成功后,会向准 Leader 发送 ACK 信息
+  ６）Leader 服务器在收到来自 Learner 的 ACK 后就会将该 Learner 加入到真正可用的 Follower
+  列表或 Observer 列表。没有反馈 ACK,或反馈了但 Leader 没有收到的 Learner,Leader不会将其加入到相应列表。
+
+##### Observer数量选择
+
+Learner向Leader同步数据，Follower同步完成就会停止同步(至少超过一半Follower同步成功，同步失败的Follower不能提供服务)，不会等待Observer同步完成；未同步完成的Observer无法向外提供服务(状态不是Observing, Client如果连接到这种服务节点会判断状态，然后重连其他的可服务节点)。
+
+Leader 中保存的 Observer 列表(ObserverQueues)其实有两个:
+
++ 假设叫all, 包含所有 Observer
++ 假设叫service, 存储已经完成了从 Leader 同步数据的Observer。service <= all。其是动态的
+
+Leader 中保存的 Follower 列表(FollowerQueues)其实也有两个:
+
++ 假设叫all, all要求其中必须有过半的 Follower 向 Leader 反馈 ACK
++ 假设叫service，存储已经完成了从 Leader 同步数据的Follower
+
+##### Leader选举
+
+###### 基本概念
+
++ serverId
+
+  对应ZK配置的myid。
+
++ 逻辑时钟
+
+  是一个整型数,该概念在选举时称为 logicalclock，而在选举结束后称为 epoch。
+
+###### Leader选举算法
+
+集群启动的Leader选举和Leader宕机后的Leader选举略有不同。
+
++ **集群启动时Leader选举**
+
+  ![](imgs/ZK集群启动时的Leader选举.png)
+
+  投票包含所推举的服务器的 myid 和 ZXID,使用(myid, ZXID)来表示。
+
+  选票选择算法：
+
+  １）先判断接收到的投票的有效性,如选票是否已经过半，如果已经过半自己直接更新状态为Following；否则检查是否是本轮投票、是否来自 LOOKING 状态的服务器。
+
+  ２）针对每一个投票，服务器都需要将别人的投票和自己的投票进行 PK，PK规则如下:
+
+  ​		优先检查 ZXID。ZXID 比较大的服务器优先作为 Leader。
+  ​		如果 ZXID 相同,那么就比较 myid。myid 较大的服务器作为 Leader 服务器 ，然后PK输掉的主机修改投票为获胜的主机。
+
++ **Leader宕机后的Leader选举**
+
+  和集群启动时的Leader选举不同的一点是选票的zxid可能不一样。
+
+  ![](imgs/Leader宕机后的Leader选举.png)
+
+##### 恢复模式的三个原则
+
+１）Leader主动出让原则
+
+若集群中 Leader 收到的 Follower 心跳数量没有过半,此时 Leader 会自认为自己与集群的连接已经出现了问题,其会主动修改自己的状态为 LOOKING,去查找新的 Leader。
+
+２）已被处理的消息不能丢
+
+如果在非全部 Follower 收到 COMMIT 消息之前 Leader 就挂了,这将导致一种后果:部分 Server 已经执行了该事务,而部分 Server 尚未收到 COMMIT 消息,所以其并没有执行该事务。当新的 Leader 被选举出,集群经过恢复模式后需要保证所有 Server 上都执行了那些已经被部分 Server 执行过的事务。
+
+重新当前的Leader一定是上届Leader挂之前消息同步成功的Follower（因为选举先比较zxid,再比较myid,同步成功的Follower的xid肯定比失败的大１，而epoch的值是相同的），然后新上任的Leader只需要再发起一次数据同步就可以把之前提交了一半的消息同步到所有Follower节点。
+
+３）被丢弃的消息不能再现
+
+上届Leader发出提案通过后将事务更新到本地后就挂了所有Follower还没有接收到Commit，重新选举之后的Leader是不包含这个提案的，这时如果之前挂掉的Leader重新上线化身Follower,但是内部还保存着之前commit失败的提案。重新同步的时候需要与新的Leader进行对比，删除之前commit失败的提案。
+
+### 高可用
+
+#### ZK服务器数量保持奇数的原因
+
+因为提案表决需要一半以上通过，才有效；而对于２n+1个节点和２n+2个节点，<u>系统最高容忍挂掉的节点数量</u>都是ｎ，只要挂掉的节点数量超过这个数，就无法通过任何提案了，系统也就不可用了。
+
+但是多一台机器能增强系统吞吐量，并不会浪费服务器资源。
+
+#### 容灾设计方案
+
++  **双机房部署**
+
+  不管怎么分配节点都不能保证任意一个机房的ZK节点挂掉还可以对外服务。
+
++ **三机房部署**
+
+  三机房部署中要求每个机房中的主机数量必须少于集群总数的一半。
+
+  多用这种方案，因为任何一个机房的ZK节点挂掉，其他两个机房的节点数量相加都大于一半仍然可以对外服务。
+
+### CAP定理
+
+一致性、可用性、分区容错性不可兼得。
+
+分区容错性：分布式系统在遇到任何网络分区故障时,仍能够保证对外提供满足一致性和可用性的服务。
+
+#### BASE理论（CAP的一种均衡）
+
+BASE 是 Basically Available(基本可用)、Soft state(软状态)和 Eventually consistent(最终一致性)三个短语的简写。
+BASE 理论的核心思想是:即使无法做到实时一致性,但每个系统都可以根据自身的业务特点,采用适当的方式来使系统达到最终一致性。
+
+**基本可用**是指分布式系统在出现不可预知故障的时候,允许损失部分可用性。比如允许损失响应速度、损失部分功能。
+
+## ZK源码解析
+
+### Leader选举源码实现
+
+实现类`FastLeaderElection`。使用TCP实现了Leader的选举。它使用`QuorumCnxManager`类的对象进行连接管理 (与其它Server间的连接管理)。否则(即若不使用`QuorumCnxManager`对象的话)，将使用 UDP的基于推送的算法实现。
+
+```java
+//开启新一轮的Leader选举。无论何时，只要QuorumPeer的状态变为了LOOKING，那么这个方法将被调用，
+//并且它会发送notifications给所有其它的同级服务器。
+FastLeaderElection$lookForLeader()
+  
+```
 
 
 
-疑问：
++ Notification
 
-１）Observer这种角色主要是做什么的？可以保持同样负载能力下，减少选举和表决压力，即并不需要太多拥有表决权和选举权的节点，否则可能导致表决和选举效率低下。
++ QuorumPeer.ServerState
 
-## ZK实现原理
+  
 
 
 
