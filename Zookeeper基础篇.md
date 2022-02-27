@@ -1,10 +1,10 @@
-## Zookeeper基础篇
+# Zookeeper基础篇
 
 [Zookeeper官网](http://zookeeper.apache.org/)
 
 [Zookeeper 3.5.5 Doc](http://zookeeper.apache.org/doc/r3.5.5/)
 
-#### 1 分布式基础
+## 分布式基础
 
 单机负载问题  
 
@@ -38,11 +38,11 @@
 
 
 
-#### 2 Zookeeper基础
+## Zookeeper基础
 
 监控、协调系统组件， 比如某个子服务挂掉了，通知服务调用者去调用另一个“镜像”子服务。
 
-##### 2.1 服务节点的角色
+### 服务节点的角色
 
 + **Leader**
 
@@ -56,39 +56,42 @@
 
   分摊读负载；一旦observer被重启，需要从leader重新同步整个名字空间（TODO）。
 
-##### 2.2 Session会话与管理
+### ZNode
 
-客户端和服务端之间建立的一个TCP长连接`org.apache.zookeeper.ClientCnxn`（TODO：存在异议）。
+#### ZNode属性
 
-###### 会话状态
+```shell
+cZxid: Created Zxid,表示当前 znode 被创建时的事务 ID
+ctime: Created Time,表示当前 znode 被创建的时间
+mZxid: Modified Zxid,表示当前 znode 最后一次被修改时的事务 ID
+mtime: Modified Time,表示当前 znode 最后一次被修改时的时间
+pZxid: 表示当前 znode 的子节点列表最后一次被修改时的事务 ID。注意,只能是其子节点列表变更了才会引起 	  
+       pZxid 的变更,子节点内容的修改不会影响 pZxid。
+cversion: Children Version,表示子节点的版本号。该版本号用于充当乐观锁。
+dataVersion: 	表示当前 znode 数据的版本号。该版本号用于充当乐观锁。
+aclVersion: 	表示当前 znode 的权限 ACL 的版本号。该版本号用于充当乐观锁。
+ephemeralOwner: 若当前 znode 是持久节点,则其值为 0;若为临时节点,则其值为创建该节点的会话的 
+				SessionID。当会话消失后,会根据 SessionID 来查找与该会话相关的临时节点进行删除。
+dataLength: 	当前 znode 中存放的数据的长度。
+numChildren: 	当前 znode 所包含的子节点的个数。
 
-+ CONNECTING
-+ CONNECTED
-+ RECONNECTING
-+ RECONNECTED
-+ CLOSE
-
-TODO：创建连接和创建会话的区别？
-
-##### 2.3 ZNode
-
-###### ZNode属性
-
+比如：
+[zk: localhost:2184(CONNECTED) 4] get /test
+test
+cZxid = 0x100000003
+ctime = Fri Mar 27 20:38:53 CST 2020
+mZxid = 0x100000003
+mtime = Fri Mar 27 20:38:53 CST 2020
+pZxid = 0x100000003
+cversion = 0
+dataVersion = 0
+aclVersion = 0
+ephemeralOwner = 0x0
+dataLength = 4
+numChildren = 0
 ```
-czxid		节点创建时的zxid.
-mzxid		节点最新一次更新发生时的zxid.
-ctime		节点创建时的时间戳.
-mtime		节点最新一次更新发生时的时间戳.
-dataVersion	节点数据的更新次数.
-cversion	其子节点的更新次数
-aclVersion	节点ACL(授权信息)的更新次数.
-ephemeralOwner		如果该节点为ephemeral节点, ephemeralOwner值表示与该节点绑定的session id. 
-					如果该节点不是ephemeral节点, ephemeralOwner值为0.
-dataLength	节点数据的字节数.
-numChildren	子节点个数.
-```
 
-###### ZNode类型
+#### ZNode类型
 
 + **持久**（**PERSISTENT**）
 
@@ -120,29 +123,50 @@ TODO：
 
 2）什么时候算是会话失效？
 
-###### Chroot特性
+#### Chroot特性
 
 实现公用一个Zookeeper集群情况下对不相干的应用的隔离，每个应用只对应其中一棵子树。
 
-##### 2.4 ACL(Access Control List)
+### ACL(Access Control List)
 
 [Zookeeper ACL](http://zookeeper.apache.org/doc/r3.5.5/zookeeperProgrammers.html#sc_ZooKeeperAccessControl) 官方文档写的不清不楚。
 
-ACL（Access Control List） 用于控制节点的创建，删除，读取，更新 及 权限设置。一般表示为`scheme​:id:​permissions`或`schema:expression:permissions`。
+ACL（Access Control List） 用于控制节点的创建，删除，读取，更新 及 权限设置。
 
-用户访问服务端权限控制（schema）：
+一般表示为`scheme:id:permissions`或`scheme:expression:permissions`。
 
-+ world（完全开放，默认）
+> ACL是细粒度的权限管理策略，Linux UGO是粗粒度的权限管理策略。
+>
+> 粗细粒度权限管理的理解：个人认为针对个体的权限管理设置就是细粒度的，针对某个群体的权限管理设置是粗粒度的。
+>
+> Unix/Linux现在也支持ACL, 子目录／子文件默认继承父目录的ACL;
+>
+> ZK中的ACL子znode不会继承父znode的ACL。
 
-  对应id只有一个`anyone`, 即 `world:anyone`。
+授权策略（scheme），常用的策略：
 
-+ auth（通过认证的用户）
++ world：对所有人开放的权限，world下只有一个用户/id anyone，那么组合的写法就是world:anyone:[permissions]
 
-  
++ auth：用户名密码认证，形式为auth:user:password:[permissions]
 
-+ digest（用户名密码认证）
++ digest：用户名＋加密的密码认证，组合形式为digest:username:BASE64(SHA1(password)):[permissions]
 
-+ ip （IP地址认证，相当于白名单）
+  auth与digest的区别就是，前者明文，后者密文setAcl /path auth:lee:password:cdrwa与setAcl /path
+
+  digest:lee:BASE64(SHA1(password)):cdrwa是等价的，在通过 addauth digest lee:password后都能指定操作指定节点的权限
+
++ ip：指定的IP拥有此节点的访问权限，比如ip:192.168.1.1:[permissions]
+
++ super：代表超级管理员，拥有所有的权限
+
+  工作原理和auth/digest是类似的，不过需要在配置文件中指定密码
+
+  ```shell
+  #比如设置超级管理员密码为admin, 即super:admin。
+  "-Dzookeeper.DigestAuthenticationProvider.superDigest=super:xQJmxLMiHGwaqBvst5y6rkB6HQs="
+  ```
+
+授权对象（id）
 
 权限分类（permission, 类似Linux rwx）：
 
@@ -152,54 +176,158 @@ ACL（Access Control List） 用于控制节点的创建，删除，读取，更
 + DELETE(d)（删除子节点）
 + ADMIN(a)（设置用户权限的权限）
 
-TODO：
+命令行示例：
 
-1）ACL四种模式到底是怎么用的？
+```shell
+#查看某个节点的ACL
+[zk: localhost:2184(CONNECTED) 43] getAcl /test/e-node
+'world,'anyone
+: cdrwa
+#创建时设置节点的ACL,如：所有人分配cdrw权限
+[zk: localhost:2184(CONNECTED) 44] create /test/acl-node "test acl node" world:anyone:cdrw
+'world,'anyone
+: cdrw
+#尝试重新设置权限，发现不被允许（因为没有a权限）
+[zk: localhost:2184(CONNECTED) 48] setAcl /test/acl-node world:anyone:cdrwa
+Authentication is not valid : /test/acl-node
+#auth认证，必须先用addauth注册用户名密码，因为创建auth权限节点需要先认证用户名和密码
+#addauth digest lee:123456，相当于web登录时输入用户名和密码
+[zk: localhost:2184(CONNECTED) 50] addauth digest lee:123456
+[zk: localhost:2184(CONNECTED) 51] create /test/acl-auth-node "test acl auth node" auth:lee:123456:cdrwa
+Created /test/acl-auth-node
+#上面的create操作和下面是等效的
+[zk: localhost:2184(CONNECTED) 51] create /test/acl-auth-node "test acl auth node" digest:lee:d10P4dEqSdWLiUITSkI0kS/aMKg=:cdrwa
+Created /test/acl-auth-node
+#重新开启一个zkCli连接，需要重新输入 addauth digest lee:123456,然后才能访问/test/acl-auth-node节点
+[zk: localhost:2184(CONNECTED) 2] get /test/acl-auth-node
+Authentication is not valid : /test/acl-auth-node
+[zk: localhost:2184(CONNECTED) 3] addauth digest lee:123456
+#设置可以cdrwa的ip白名单
+[zk: localhost:2184(CONNECTED) 56] create /test/acl-ip-node ip:127.0.0.1:cdrwa
+Created /test/acl-ip-node
+```
 
-##### 2.5 Watcher（事件通知）
+### Watcher（事件通知）
 
-客户端创建包含方法回调的Watcher并注册到事件的Watcher列表。
+是发布/订阅模式的实现，客户端创建包含方法回调的Watcher并注册到事件的Watcher列表。
 
-###### 事件类型
+#### 事件类型
 
-###### Watcher的特性
+![](imgs/watcher事件.png)
 
-+ 一次性
+#### Watcher的特性
 
-+ Watcher回调是一个串行同步过程
++ **一次性**
+
+  不适合监听变化非常频繁的场景。
+
++ **Watcher回调是一个串行同步过程**
 
   遇到回调业务逻辑繁重的情况，需要放到单独的线程中处理。
 
-+ 轻量
++ **轻量**
 
   Watcher通知只包含通知状态、时间类型和节点路径。
 
-###### Watcher的使用
+#### Watcher的使用
 
 
 
-##### 2.6 一致性协议
+#### Watcher工作原理
+
+![](imgs/watcher工作原理.png)
+
+注意：向Server注册watcher是将客户端自己的地址信息、要监听的znode和watcher事件注册到zkServer。
+
+源码分析参考：《Zookeeper实现原理.md》。
+
+### Session会话与管理
+
+客户端和服务端之间建立的一个TCP长连接`org.apache.zookeeper.ClientCnxn`（TODO：存在异议）。
+
+#### 会话状态
+
++ **CONNECTING**（连接中）
+
+  客户端要创建连接,首先会在客户端创建一个 ZooKeeper 对象（即进入CONNECTING状态）。客户端会采用轮询方式逐个获取服务器列表中的 zk 的 IP 进行连接尝试,每轮询一遍等待1000ms后重新尝试，直到连接成功。注意,在轮询之前,首先会将服务器列表打散,然后再进行轮询。
+
++ **CONNECTED**(已连接)
+
++ **RECONNECTING**
+
++ **RECONNECTED**
+
++ **CLOSED**(已关闭)
+
+  若出现会话超时、权限验证失败或客户端主动退出等情况，客户端状态就变为CLOSED。此时客户端的ZooKeeper对象就消失了。
+
+#### 会话连接超时管理
+
+当客户端向 zk 发出连接请求后,是如何知道是否连接成功的呢?
+
+当 zk 接收到某客户端会话连接后,其会向该客户端发送连接成功 ACK。当客户端接收到 ACK 后,就知道自己已经
+与 zk 建立了连接。
+
+若 zk 没有收到连接请求,或客户端没有收到 zk 发送的 ACK 怎么办呢?
+
+客户端就需要进行等待,直到发生会话连接超时。然后再进行下一次连接尝试。当然,尝试一直连接不上怎么办?这就依赖于连接时设置的超时重试策略了。会话连接超时是由客户端维护的。
+
+另外还有一个读超时时间，即允许的连接空闲时间(没有向服务端发消息的空闲时间)，如果发生读超时或者连接超时就会抛出SessionTimeoutException。
+
+#### 会话空闲超时管理（重要）
+
+zk 为每一个客户端都维护着空闲超时管理。一旦空闲超时,服务端就会认为该客户端已丢失,其会将该会话的 SessionId 从服务端清除。这也就是为什么客户端在空闲时需要定时向服务端发送心跳,就是为了维护这个会话长连接的。服务器是通过空闲超时管理来判断会话是否发生中断的。
+
+会话空闲超时管理是由服务端维护的。其采用了一种特殊的方式——分桶策略。
+
++ 分桶策略
+
+  会话在zkServer中在一个个的会话桶（SessionSet）中存储；会话超时并不是实时删除，而是一桶一桶地删除，在每个桶的超时时间清除。会话通过心跳可以更新移动到后面的桶中。
+
+#### 会话连接事件
+
+客户端与服务端的长连接失效后,客户端将进行重连。在重连过程中**客户端**会产生三种会话连接事件:
+
++ 连接丢失
+
+  客户端长时间没有获取服务端的ACK。
+
++ 会话转移
+
+  连接丢失后重新连接其他服务器节点连接成功，sessionId不变，改变了ZooKeeper对象中连接服务属性。
+
++ 会话失效
+
+  连接丢失后重新连接，一直连接不成功，最终服务端因为没有心跳维持会话，将会话删除掉了（所有服务节点中此会话一并删除），而客户端还在不断重试连接，连接成功后服务节点确找不到此会话信息。
+
+#### 可视化客户端
+
++ **ZooViewer**
+
++ **ZooInspector**(推荐)
+
+  官方自带的模块，编译打包详细参考：https://github.com/apache/zookeeper/blob/master/zookeeper-contrib/zookeeper-contrib-zooinspector/README.txt
+
+  也可以使用https://github.com/zzhang5/zooinspector，只需要mvn clean package即可，然后将target/zooinspect-pkg拷贝到自己的软件目录下，添加环境变量，执行。
+
+### 一致性协议
 
 + ZAB
 + Paxos
 + Raft
 + BASE
 
-##### 2.7 Leader选举
+### Leader选举
 
-###### 选举后的数据同步
+#### 选举后的数据同步
 
-###### 节点宕机处理
+#### 节点宕机处理
 
-##### 2.8 数据同步
+### 数据同步
 
+### 数据与存储
 
-
-##### 2.9 数据与存储
-
-
-
-##### 2.10 常用终端命令
+### 常用终端命令
 
 连接服务端后，输入`help`可以查看所有命令。
 
@@ -253,9 +381,9 @@ TODO：
 
 2）
 
-#### 3 Zookeeper 集群部署
+## Zookeeper 集群部署
 
-##### 3.1 Zookeeper 配置
+### Zookeeper 配置
 
 官网没有文档集中总结
 
@@ -277,7 +405,7 @@ server.A=B:C:D					#A:第几号服务器（1,2..）B:服务IP C:Leader和Followe
 
 ```
 
-##### 3.2 Docker 在单机部署真集群
+### Docker 在单机部署真集群
 
 1）首先拉取Zookeeper官方镜像
 
@@ -384,15 +512,9 @@ TODO：
 
 1）使用集群部署创建多个服务节点是不是就算ZK高可用集群了？
 
+### Zookeeper监控与运维
 
-
-#### 4 Zookeeper监控与运维
-
-
-
-
-
-#### 附录
+## 附录
 
 + jps
 

@@ -15,6 +15,7 @@
     <module>zk-abc</module>
     <module>zk-src-debug</module>
     <module>zk-namedservice</module>
+    <module>zk-configcenter</module>
   </modules>
   <name>zk-template</name>
 

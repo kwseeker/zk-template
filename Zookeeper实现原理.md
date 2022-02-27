@@ -260,9 +260,23 @@ FastLeaderElection$lookForLeader()
 
   
 
+### zkCli会话连接原理
 
+会话连接过程：
 
-## 8种常用业务场景
+![](imgs/ZK一次会话的创建过程.jpg)
+
+１）创建ZooKeeper对象（CONNECTING状态），获取所有 zkServer 地址，打散之后轮询依次尝试连接，轮询一遍都没有成功建立连接则等待１秒，将zkServer列表打散后再次轮询重试。
+
+２）如果zkCli连接zkServer时，zkServer返回Ack则连接成功（变为CONNECTED状态），连接成功后记录当前时间为“上次发送连接的时间”（lastSend）和“上次心跳的时间”（lastHeard）;
+
+３）如果已经建立连接后，从某次向zkServer发送消息后持续“读超时时间”这么久一直空闲没有再次向zkServer发送消息，就会抛出SessionTimeoutException，为了防止会话超时需要zkCli端每隔一段时间向zkServer发送一次心跳。如果没有成功建立连接，从发起连接到当前时间如果超过“连接超时时间“也会抛出SessionTimeoutException。
+
+> sessionTimeout 默认30s;
+>
+> readTimeout是sessionTimeout的2/3，即默认20s。
+
+## 
 
 
 
