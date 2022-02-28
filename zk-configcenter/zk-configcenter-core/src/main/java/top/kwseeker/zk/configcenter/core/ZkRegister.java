@@ -2,6 +2,12 @@ package top.kwseeker.zk.configcenter.core;
 
 import lombok.extern.slf4j.Slf4j;
 import org.I0Itec.zkclient.ZkClient;
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.state.ConnectionState;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.zookeeper.data.Stat;
 import top.kwseeker.zk.configcenter.core.anno.ZkExtendConfigurable;
 import top.kwseeker.zk.configcenter.core.anno.ZkFieldConfigurable;
 import top.kwseeker.zk.configcenter.core.anno.ZkTypeConfigurable;
@@ -9,95 +15,127 @@ import top.kwseeker.zk.configcenter.core.exception.ConfigureException;
 import top.kwseeker.zk.configcenter.core.listener.DataChangeListener;
 import top.kwseeker.zk.configcenter.core.operator.Updater;
 import top.kwseeker.zk.configcenter.core.resover.ExtendResolver;
-import top.kwseeker.zk.configcenter.core.utils.StringZkSerializer;
 
 import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+/**
+ * 连接管理
+ * 为标注了需要动态管理的配置，创建连接（一个ZK集群默认一个连接实例），
+ * 然后
+ */
 @Slf4j
 public class ZkRegister {
 
-    private static final Map<String, ZkClient> cache = Collections.synchronizedMap(new WeakHashMap<>(5));
+    private static final int SESSION_TIMEOUT_MS = 60 * 1000;
+    private static final int CONN_TIMEOUT_MS = 5000;
+    private static final int BASE_SLEEP_TIME_MS = 5000;
+    private static final int MAX_RETRY_TIMES = 30;
+    private static final boolean CAN_BE_READ_ONLY = true;
+    public static final String DEFAULT_SERVERS = "localhost:2181";
 
-    private final String globalZkServer;        //全局的zk server 配置
-    private final static int timeOut = 50000;
+    private static final RetryPolicy retryPolicy = new ExponentialBackoffRetry(BASE_SLEEP_TIME_MS, MAX_RETRY_TIMES);
+    private static final Map<String, CuratorFramework> clientCache = Collections.synchronizedMap(new WeakHashMap<>(5));
 
-    public ZkRegister(String globalZkServer) {
-        this.globalZkServer = globalZkServer;
+    private final String globalZkServers;        //全局的 zk server 节点配置，为了支持多套集群
+
+    public ZkRegister(String globalZkServers) {
+        this.globalZkServers = globalZkServers;
     }
 
+    /**
+     * 对 ZkTypeConfigurable 注解的类
+     *
+     * @param clazz         需要动态管理的配置类
+     * @param forceWhenNull
+     */
     public final synchronized void register(final Class<?> clazz, final boolean forceWhenNull) {
         if (!clazz.isAnnotationPresent(ZkTypeConfigurable.class)) {
-            throw new ConfigureException("Not Register!");
+            throw new ConfigureException("without necessary zk type configuration!");
         }
 
         ZkTypeConfigurable type = clazz.getAnnotation(ZkTypeConfigurable.class);
-        final String server = type.useOwnServer() ? type.servers() : globalZkServer;
-        if (server == null || server.equals("")) {
-            log.info("zk server must not null!");
-            System.exit(0);
+        final String servers = type.useOwnServers() ? type.servers() : globalZkServers;
+        if (servers == null || servers.equals("")) {
+            throw new ConfigureException("zk servers must not be null when use own servers!");
         }
 
-        ZkClient zkClient = makeZkClient(server, timeOut);
-        String root = type.path().trim();
-        if ("".equals(root)) {
-            root = clazz.getPackage().getName().replaceAll("\\.", "/");
-        }
-        //构造zk 路径
-        final String path = getZkPath(root, clazz.getSimpleName());
+        //1 创建Curator连接
+        CuratorFramework curatorClient = makeZkClient(servers);
 
-        //开始遍历field
+        //2 构造ZNode完整路径
+        String rootPath = type.nodePath().trim();
+        if ("".equals(rootPath)) {
+            rootPath = clazz.getPackage().getName().replaceAll("\\.", "/");
+        }
+        final String classZNodePath = generateClassZNodePath(rootPath, clazz.getSimpleName());
+
+        //3 遍历field，注册子节点监听
         final Field[] fields = clazz.getDeclaredFields();
-        for (Field f : fields) {
-            if (f.isAnnotationPresent(ZkFieldConfigurable.class)) {
-                commonFieldHandler(zkClient, f, path, clazz, forceWhenNull);
+        for (Field field : fields) {
+            if (field.isAnnotationPresent(ZkFieldConfigurable.class)) {
+                commonFieldHandler(curatorClient, field, classZNodePath, clazz, forceWhenNull);
                 continue;
             }
-            if (f.isAnnotationPresent(ZkExtendConfigurable.class)) {
-                extendDataHandler(zkClient, f, path, clazz, forceWhenNull);
+            if (field.isAnnotationPresent(ZkExtendConfigurable.class)) {
+                extendDataHandler(curatorClient, field, classZNodePath, clazz, forceWhenNull);
             }
         }
     }
 
-    private void commonFieldHandler(final ZkClient zkClient, final Field f, final String path, final Class<?> clazz, final boolean forceWhenNull) {
-        log.debug("field:" + f.getName() + "type:" + f.getType().getSimpleName());
-        ZkFieldConfigurable field = f.getAnnotation(ZkFieldConfigurable.class);
+    private void commonFieldHandler(final CuratorFramework zkClient, final Field field, final String classPath, final Class<?> clazz,
+                                    final boolean forceWhenNull) {
+        log.info("3> register common field:" + field.getName() + "type:" + field.getType().getSimpleName());
 
-        String fieldPath = "".equals(field.path()) ? getZkPath(path, f.getName()) : getZkPath(path, field.path());
-        String value = zkClient.readData(fieldPath, true);
-        log.debug("ZK PATH :" + fieldPath + " value:" + value);
+        ZkFieldConfigurable zkFieldConfigurable = field.getAnnotation(ZkFieldConfigurable.class);
+        String fieldPath = "".equals(zkFieldConfigurable.nodePath()) ?
+                generateClassZNodePath(classPath, field.getName()) : generateClassZNodePath(classPath, zkFieldConfigurable.nodePath());
 
-        //resolver解析
-        Resolver<?> resolver;
-        try {
-            resolver = field.resolver().getConstructor(Class.class, Field.class).newInstance(clazz, f);
-        } catch (Exception e) {
-            log.debug("get resolver fail!");
-            return;
-        }
-        //订阅
-        subscribe(value, zkClient, fieldPath, field.update(), forceWhenNull, resolver);
+
+
+
+        //String value = zkClient.readData(fieldPath, true);
+        //log.debug("ZK PATH :" + fieldPath + " value:" + value);
+        //
+        ////resolver解析
+        //Resolver<?> resolver;
+        //try {
+        //    resolver = zkFieldConfigurable.resolver().getConstructor(Class.class, Field.class).newInstance(clazz, f);
+        //} catch (Exception e) {
+        //    log.debug("get resolver fail!");
+        //    return;
+        //}
+        ////订阅
+        //subscribe(value, zkClient, fieldPath, field.update(), forceWhenNull, resolver);
     }
 
-    private void extendDataHandler(final ZkClient zkClient, final Field f, final String path, final Class<?> clazz, final boolean forceWhenNull) {
-        log.debug("field:" + f.getName() + "type:" + f.getType().getSimpleName());
-        ZkExtendConfigurable field = f.getAnnotation(ZkExtendConfigurable.class);
-        String fieldPath = "".equals(field.path()) ? getZkPath(path, f.getName()) : getZkPath(path, field.path());
-        String value = zkClient.readData(fieldPath, true);
-        log.debug("ZK PATH :" + fieldPath + " value:" + value);
 
-        String tempKey = field.tempKey();
-        Class<? extends ExtendDataStore> store = field.dataStore();
+    private void extendDataHandler(final CuratorFramework zkClient, final Field field, final String classPath, final Class<?> clazz,
+                                   final boolean forceWhenNull) throws Exception {
+        log.info("3> register extend field:" + field.getName() + "type:" + field.getType().getSimpleName());
+
+        ZkExtendConfigurable zkExtendConfigurable = field.getAnnotation(ZkExtendConfigurable.class);
+        String fieldPath = "".equals(zkExtendConfigurable.extPath()) ?
+                generateClassZNodePath(classPath, field.getName()) : generateClassZNodePath(classPath, zkExtendConfigurable.extPath());
+
+        createIfNeed(zkClient, fieldPath);
+
+        //String value = zkClient.readData(fieldPath, true);
+        //log.debug("ZK PATH :" + fieldPath + " value:" + value);
+
+
+        String tempKey = zkExtendConfigurable.tempKey();
+        Class<? extends ExtendDataStore<?>> store = zkExtendConfigurable.dataStore();
         try {
-            ExtendResolver extendResolver = new ExtendResolver(tempKey, store.newInstance(), clazz, f);
+            ExtendResolver extendResolver = new ExtendResolver(tempKey, store.newInstance(), clazz, field);
             //订阅
             subscribe(value, zkClient, fieldPath, forceWhenNull, field.update(), extendResolver);
         } catch (InstantiationException e) {
-            log.debug("Instantiation Exception..", e);
+            log.error("Instantiation Exception..", e);
         } catch (IllegalAccessException e) {
-            log.debug("Illegal Access Exception..", e);
+            log.error("Illegal Access Exception..", e);
         }
     }
 
@@ -126,27 +164,61 @@ public class ZkRegister {
         }
     }
 
-    private String getZkPath(String parent, String pathName) {
-        final String separator = Constant.SEPARATOR;
-        if (!parent.startsWith(separator)) {
-            parent = separator + parent;
+    private void createIfNeed(CuratorFramework curatorClient, String path) throws Exception {
+        Stat stat = curatorClient.checkExists().forPath(path);
+        if (stat == null) {
+            String s = curatorClient.create().forPath(path);
+            log.debug("path {} not exist, and created!", s);
         }
-        if (!parent.endsWith(separator)) {
-            parent = parent + separator;
-        }
-        if (pathName.startsWith(separator)) {
-            pathName = pathName.substring(1);
-        }
-        return parent + pathName;
     }
 
-    private ZkClient makeZkClient(String server, int timeOut) {
-        if (cache.containsKey(server)) {
-            return cache.get(server);
+    /**
+     * 创建可复用的Curator客户端
+     * 默认一个集群对应一个连接
+     *
+     * @param servers 服务器集群
+     * @return CuratorFramework instance
+     */
+    private CuratorFramework makeZkClient(String servers) {
+        if (clientCache.containsKey(servers)) {
+            return clientCache.get(servers);
         }
 
-        final ZkClient zkClient = new ZkClient(server, timeOut, timeOut, new StringZkSerializer());
-        cache.put(server, zkClient);
-        return zkClient;
+        CuratorFramework curatorClient = CuratorFrameworkFactory.builder()
+                .connectString(servers)
+                .retryPolicy(retryPolicy)
+                .sessionTimeoutMs(SESSION_TIMEOUT_MS)
+                .connectionTimeoutMs(CONN_TIMEOUT_MS)
+                .canBeReadOnly(CAN_BE_READ_ONLY)
+                .build();
+
+        curatorClient.getConnectionStateListenable().addListener((client, newState) -> {
+            if (newState == ConnectionState.CONNECTED) {
+                log.info("Connection to servers:{} succeed!", servers);
+            }
+        });
+        curatorClient.start();
+
+        clientCache.put(servers, curatorClient);
+        log.info("1> create zk client done");
+        return curatorClient;
+    }
+
+    private String generateClassZNodePath(String rootPath, String className) {
+        final String separator = Constant.SEPARATOR;
+        if (!rootPath.startsWith(separator)) {
+            rootPath = separator + rootPath;
+        }
+        if (!rootPath.endsWith(separator)) {
+            rootPath = rootPath + separator;
+        }
+
+        if (className.startsWith(separator)) {
+            className = className.substring(1);
+        }
+
+        String classZNodePath = rootPath + className;
+        log.info("2> generate zk class node done, nodePath={}", classZNodePath);
+        return classZNodePath;
     }
 }

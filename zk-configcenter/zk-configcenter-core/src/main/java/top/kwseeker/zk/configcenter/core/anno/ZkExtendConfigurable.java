@@ -8,12 +8,13 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface ZkExtendConfigurable {
+
     /**
      * 该配置在zk上面的节点路径（node path）
      * 缺省按照一下规则：
      * config/center/default/applicationName/className/[field]
      */
-    String path() default "";
+    String extPath() default "";
 
     /**
      * 是否自动更新配置，默认是true
@@ -28,5 +29,5 @@ public @interface ZkExtendConfigurable {
     /**
      * 用于实现扩展存储数据操作的类,默认给出redis的操作方案（应该是不给出，并且不许指定的项）
      */
-    Class<? extends ExtendDataStore> dataStore() ;
+    Class<? extends ExtendDataStore<?>> dataStore() ;
 }

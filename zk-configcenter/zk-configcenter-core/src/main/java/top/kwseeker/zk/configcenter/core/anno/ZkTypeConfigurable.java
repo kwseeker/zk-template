@@ -9,19 +9,19 @@ import java.lang.annotation.*;
 public @interface ZkTypeConfigurable {
 
     /**
-     * 该配置在zk上面的节点路径（node path）
-     * 缺省按照一下规则：
+     * ZK上面的节点路径
+     * 缺省按照以下规则：
      * config/center/default/[applicationName]/[className]/
      */
-    String path() default "";
+    String nodePath() default "";
 
     /**
-     * 使用当前的zk servers 配置
+     * 是否使用指定的zkServers, 默认使用全局的
      */
-    boolean useOwnServer() default false;
+    boolean useOwnServers() default false;
 
     /**
-     * 当前zk servers
+     * 指定的zkServers
      */
     String servers() default "";
 }

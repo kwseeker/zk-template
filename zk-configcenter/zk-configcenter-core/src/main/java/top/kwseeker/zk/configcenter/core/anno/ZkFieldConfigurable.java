@@ -15,7 +15,7 @@ public @interface ZkFieldConfigurable {
      * 缺省按照一下规则：
      * config/center/default/applicationName/className/[field]
      */
-    String path() default "";
+    String nodePath() default "";
 
     /**
      * 是否自动更新配置，默认是true

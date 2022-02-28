@@ -17,5 +17,16 @@
             <groupId>com.101tec</groupId>
             <artifactId>zkclient</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-recipes</artifactId>
+            <version>5.0.0</version>
+            <!--<exclusions>-->
+            <!--    <exclusion>-->
+            <!--        <groupId>org.apache.zookeeper</groupId>-->
+            <!--        <artifactId>zookeeper</artifactId>-->
+            <!--    </exclusion>-->
+            <!--</exclusions>-->
+        </dependency>
     </dependencies>
 </project>
