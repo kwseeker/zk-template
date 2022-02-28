@@ -101,12 +101,6 @@ numChildren = 0
 
   有序指创建同名节点会自动在节点名后添加一个自增的数字。
 
-+ **带有生存时间的持久节点**（**PERSISTENT_WITH_TTL**）
-
-  超时时间内没有被修改，一旦到达超时时间且不含子节点会被立即删除。
-
-+ **带有生存时间的持久有序节点**（**PERSISTENT_SEQUENTIAL_WITH_TTL**）
-
 + **临时** (**EPHEMERAL**)
 
   临时节点与客户端会话生命周期绑定，客户端会话失效（不是TCP连接断开）后节点会被删除（TODO）；
@@ -118,6 +112,16 @@ numChildren = 0
 + **CONTAINER**
 
   为某些特殊功能（leader、lock等）实现的节点类型，当最后一个子节点被删除则此节点会在未来某个时间点被删除；
+  
++ **带有生存时间的持久节点**（**PERSISTENT_WITH_TTL**）
+
+  超时时间内没有被修改，一旦到达超时时间且不含子节点会被立即删除。
+
++ **带有生存时间的持久有序节点**（**PERSISTENT_SEQUENTIAL_WITH_TTL**）
+
+> TTL节点在3.5.5版本引入，默认禁用，只能通过系统配置 zookeeper.extendedTypesEnabled=true 开启，不稳定。
+>
+> 直到3.6.3版本才默认开启。
 
 TODO：
 
