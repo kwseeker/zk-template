@@ -1,6 +1,6 @@
 package top.kwseeker.zk.configcenter.core.anno;
 
-import top.kwseeker.zk.configcenter.core.Resolver;
+import top.kwseeker.zk.configcenter.core.resover.Resolver;
 import top.kwseeker.zk.configcenter.core.resover.DefaultResolver;
 
 import java.lang.annotation.*;

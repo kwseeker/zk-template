@@ -4,6 +4,7 @@ package top.kwseeker.zk.configcenter.core;
  *
  */
 public interface ExtendDataStore<T> {
+
     /**
      * 把值设置到扩展存储中
      *

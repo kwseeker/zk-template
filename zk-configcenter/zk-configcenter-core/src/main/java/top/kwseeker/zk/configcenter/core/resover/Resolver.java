@@ -1,10 +1,13 @@
-package top.kwseeker.zk.configcenter.core;
+package top.kwseeker.zk.configcenter.core.resover;
 
 import lombok.extern.slf4j.Slf4j;
 import top.kwseeker.zk.configcenter.core.utils.ReflectionUtils;
 
 import java.lang.reflect.Field;
 
+/**
+ * 反射设置/读取类实例的Field值
+ */
 @Slf4j
 public abstract class Resolver<T> {
 

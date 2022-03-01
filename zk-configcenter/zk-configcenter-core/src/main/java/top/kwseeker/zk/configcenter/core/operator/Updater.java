@@ -1,6 +1,6 @@
 package top.kwseeker.zk.configcenter.core.operator;
 
-import top.kwseeker.zk.configcenter.core.Resolver;
+import top.kwseeker.zk.configcenter.core.resover.Resolver;
 import top.kwseeker.zk.configcenter.core.exception.ConfigureException;
 
 import java.util.Collections;

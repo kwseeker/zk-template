@@ -15,6 +15,7 @@ import top.kwseeker.zk.configcenter.core.exception.ConfigureException;
 import top.kwseeker.zk.configcenter.core.listener.DataChangeListener;
 import top.kwseeker.zk.configcenter.core.operator.Updater;
 import top.kwseeker.zk.configcenter.core.resover.ExtendResolver;
+import top.kwseeker.zk.configcenter.core.resover.Resolver;
 
 import java.lang.reflect.Field;
 import java.util.Collections;
@@ -122,10 +123,6 @@ public class ZkRegister {
 
         createIfNeed(zkClient, fieldPath);
 
-        //String value = zkClient.readData(fieldPath, true);
-        //log.debug("ZK PATH :" + fieldPath + " value:" + value);
-
-
         String tempKey = zkExtendConfigurable.tempKey();
         Class<? extends ExtendDataStore<?>> store = zkExtendConfigurable.dataStore();
         try {
@@ -139,12 +136,22 @@ public class ZkRegister {
         }
     }
 
+    /**
+     *
+     * @param value
+     * @param zkClient
+     * @param fieldPath
+     * @param forceWhenNull
+     * @param update
+     * @param resolver
+     */
     private void subscribe(final String value,
                            final ZkClient zkClient,
                            final String fieldPath,
                            final boolean forceWhenNull,
                            final boolean update,
                            final Resolver<?> resolver) {
+
         if (value == null && !forceWhenNull) {
             return;
         } else if (value == null && forceWhenNull) {

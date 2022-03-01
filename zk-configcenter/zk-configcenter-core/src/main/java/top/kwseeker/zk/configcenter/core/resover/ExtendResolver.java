@@ -2,7 +2,6 @@ package top.kwseeker.zk.configcenter.core.resover;
 
 import lombok.extern.slf4j.Slf4j;
 import top.kwseeker.zk.configcenter.core.ExtendDataStore;
-import top.kwseeker.zk.configcenter.core.Resolver;
 
 import java.lang.reflect.Field;
 

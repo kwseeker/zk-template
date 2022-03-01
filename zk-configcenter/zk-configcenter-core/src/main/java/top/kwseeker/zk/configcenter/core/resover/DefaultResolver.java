@@ -1,7 +1,6 @@
 package top.kwseeker.zk.configcenter.core.resover;
 
 import lombok.extern.slf4j.Slf4j;
-import top.kwseeker.zk.configcenter.core.Resolver;
 
 import java.lang.reflect.Field;
 
@@ -19,7 +18,7 @@ public class DefaultResolver extends Resolver<String> {
 
     @Override
     public String get() {
-        return getStr(clazz,field);
+        return getStr(clazz, field);
     }
 
     @Override
@@ -42,7 +41,7 @@ public class DefaultResolver extends Resolver<String> {
             value = Short.valueOf(src);
         } else if (FieldType.class.isAssignableFrom(type)) {
             try {
-                value = ((FieldType)field.get(clazz)).valueOf(src);
+                value = ((FieldType) field.get(clazz)).valueOf(src);
             } catch (IllegalAccessException e) {
                 e.printStackTrace();
             }
@@ -50,6 +49,6 @@ public class DefaultResolver extends Resolver<String> {
             log.info("UNKNOWN TYPE!");
             return;
         }
-        setValue(clazz,field, value);
+        setValue(clazz, field, value);
     }
 }
