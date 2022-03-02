@@ -1,10 +1,12 @@
 package top.kwseeker.zk.configcenter.core;
 
 import lombok.extern.slf4j.Slf4j;
-import org.I0Itec.zkclient.ZkClient;
 import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.recipes.cache.CuratorCache;
+import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
+import org.apache.curator.framework.recipes.cache.NodeCacheListener;
 import org.apache.curator.framework.state.ConnectionState;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.zookeeper.data.Stat;
@@ -50,9 +52,9 @@ public class ZkRegister {
      * 对 ZkTypeConfigurable 注解的类
      *
      * @param clazz         需要动态管理的配置类
-     * @param forceWhenNull
+     * @param createWhenNull
      */
-    public final synchronized void register(final Class<?> clazz, final boolean forceWhenNull) {
+    public final synchronized void register(final Class<?> clazz, final boolean createWhenNull) throws Exception {
         if (!clazz.isAnnotationPresent(ZkTypeConfigurable.class)) {
             throw new ConfigureException("without necessary zk type configuration!");
         }
@@ -77,17 +79,17 @@ public class ZkRegister {
         final Field[] fields = clazz.getDeclaredFields();
         for (Field field : fields) {
             if (field.isAnnotationPresent(ZkFieldConfigurable.class)) {
-                commonFieldHandler(curatorClient, field, classZNodePath, clazz, forceWhenNull);
+                commonFieldHandler(curatorClient, field, classZNodePath, clazz, createWhenNull);
                 continue;
             }
             if (field.isAnnotationPresent(ZkExtendConfigurable.class)) {
-                extendDataHandler(curatorClient, field, classZNodePath, clazz, forceWhenNull);
+                extendDataHandler(curatorClient, field, classZNodePath, clazz, createWhenNull);
             }
         }
     }
 
     private void commonFieldHandler(final CuratorFramework zkClient, final Field field, final String classPath, final Class<?> clazz,
-                                    final boolean forceWhenNull) {
+                                    final boolean createWhenNull) {
         log.info("3> register common field:" + field.getName() + "type:" + field.getType().getSimpleName());
 
         ZkFieldConfigurable zkFieldConfigurable = field.getAnnotation(ZkFieldConfigurable.class);
@@ -109,26 +111,24 @@ public class ZkRegister {
         //    return;
         //}
         ////订阅
-        //subscribe(value, zkClient, fieldPath, field.update(), forceWhenNull, resolver);
+        //subscribe(value, zkClient, fieldPath, field.update(), createWhenNull, resolver);
     }
 
 
     private void extendDataHandler(final CuratorFramework zkClient, final Field field, final String classPath, final Class<?> clazz,
-                                   final boolean forceWhenNull) throws Exception {
+                                   final boolean createWhenNull) throws Exception {
         log.info("3> register extend field:" + field.getName() + "type:" + field.getType().getSimpleName());
 
         ZkExtendConfigurable zkExtendConfigurable = field.getAnnotation(ZkExtendConfigurable.class);
         String fieldPath = "".equals(zkExtendConfigurable.extPath()) ?
                 generateClassZNodePath(classPath, field.getName()) : generateClassZNodePath(classPath, zkExtendConfigurable.extPath());
 
-        //createIfNeed(zkClient, fieldPath);
-
         String tempKey = zkExtendConfigurable.tempKey();
         Class<? extends ExtendDataStore<?>> store = zkExtendConfigurable.dataStore();
         try {
             ExtendResolver extendResolver = new ExtendResolver(tempKey, store.newInstance(), clazz, field);
             //订阅
-            subscribe(value, zkClient, fieldPath, forceWhenNull, field.update(), extendResolver);
+            subscribe(zkClient, fieldPath, createWhenNull, zkExtendConfigurable.update(), extendResolver);
         } catch (InstantiationException e) {
             log.error("Instantiation Exception..", e);
         } catch (IllegalAccessException e) {
@@ -137,47 +137,57 @@ public class ZkRegister {
     }
 
     /**
-     *
-     * @param value
-     * @param zkClient
-     * @param fieldPath
-     * @param forceWhenNull
-     * @param update
-     * @param resolver
+     * 事件监听, 检测zNode变化并更新到内存
+     * @param curatorClient     //ZK curatorFramework
+     * @param fieldPath         //节点路径
+     * @param createWhenNull    //节点不存在时是否创建
+     * @param update            //是否监听数据变化并更新到对象
+     * @param resolver          //数据更新处理器
      */
-    private void subscribe(final String value,
-                           final CuratorFramework curatorClient,
+    private void subscribe(final CuratorFramework curatorClient,
                            final String fieldPath,
-                           final boolean forceWhenNull,
+                           final boolean createWhenNull,
                            final boolean update,
                            final Resolver<?> resolver) throws Exception {
-
-        if (value == null && !forceWhenNull) {
-            return;
-        } else if (value == null && forceWhenNull) {
-            createIfNeed(curatorClient, fieldPath);
-            String defaultValue = (String) resolver.get();
-            curatorClient.setData().forPath(fieldPath, defaultValue.getBytes());
+        Stat stat = curatorClient.checkExists().forPath(fieldPath);
+        if (stat == null) {
+            if (!createWhenNull) {
+                return;
+            } else {
+                String s = curatorClient.create().creatingParentsIfNeeded().forPath(fieldPath);
+                log.debug("path {} not exist, and created!", s);
+            }
         } else {
-            //设置值
-            resolver.set(value);
+            byte[] value = curatorClient.getData().forPath(fieldPath);
+            resolver.set(new String(value));
         }
 
         //动态更新
         if (update) {
             Updater.register(fieldPath, resolver);
             //zk订阅
-            curatorClient.subscribeDataChanges(fieldPath, new DataChangeListener());
+            CuratorCache curatorCache = CuratorCache.builder(curatorClient, fieldPath).build();
+            CuratorCacheListener listener = CuratorCacheListener.builder()
+                    .forNodeCache(new NodeCacheListener() {
+                        @Override
+                        public void nodeChanged() throws Exception {
+                            log.debug("node:{} data changed", fieldPath);
+                            byte[] bytes = curatorClient.getData().forPath(fieldPath);
+                            Updater.update(fieldPath, new String(bytes));
+                        }
+                    }).build();
+            curatorCache.listenable().addListener(listener);
+            curatorCache.start();
         }
     }
 
-    private void createIfNeed(CuratorFramework curatorClient, String path) throws Exception {
-        Stat stat = curatorClient.checkExists().forPath(path);
-        if (stat == null) {
-            String s = curatorClient.create().creatingParentsIfNeeded().forPath(path);
-            log.debug("path {} not exist, and created!", s);
-        }
-    }
+    //private void createIfNeed(CuratorFramework curatorClient, String path) throws Exception {
+    //    Stat stat = curatorClient.checkExists().forPath(path);
+    //    if (stat == null) {
+    //        String s = curatorClient.create().creatingParentsIfNeeded().forPath(path);
+    //        log.debug("path {} not exist, and created!", s);
+    //    }
+    //}
 
     /**
      * 创建可复用的Curator客户端

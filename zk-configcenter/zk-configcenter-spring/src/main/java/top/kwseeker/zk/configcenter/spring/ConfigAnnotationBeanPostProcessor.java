@@ -1,5 +1,6 @@
 package top.kwseeker.zk.configcenter.spring;
 
+import lombok.SneakyThrows;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessorAdapter;
 import org.springframework.lang.NonNull;

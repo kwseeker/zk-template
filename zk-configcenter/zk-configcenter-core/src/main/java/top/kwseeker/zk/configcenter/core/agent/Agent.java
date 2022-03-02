@@ -5,7 +5,7 @@ import top.kwseeker.zk.configcenter.core.ZkRegisterFactory;
 
 public abstract class Agent {
 
-    protected static void agent(final String servers, final String clas) {
+    protected static void agent(final String servers, final String clas) throws Exception {
         if (null == servers || servers.isEmpty()) {
             return;
         }
