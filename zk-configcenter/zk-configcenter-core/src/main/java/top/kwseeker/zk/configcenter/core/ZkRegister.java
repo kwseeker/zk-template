@@ -121,7 +121,7 @@ public class ZkRegister {
         String fieldPath = "".equals(zkExtendConfigurable.extPath()) ?
                 generateClassZNodePath(classPath, field.getName()) : generateClassZNodePath(classPath, zkExtendConfigurable.extPath());
 
-        createIfNeed(zkClient, fieldPath);
+        //createIfNeed(zkClient, fieldPath);
 
         String tempKey = zkExtendConfigurable.tempKey();
         Class<? extends ExtendDataStore<?>> store = zkExtendConfigurable.dataStore();
@@ -146,18 +146,18 @@ public class ZkRegister {
      * @param resolver
      */
     private void subscribe(final String value,
-                           final ZkClient zkClient,
+                           final CuratorFramework curatorClient,
                            final String fieldPath,
                            final boolean forceWhenNull,
                            final boolean update,
-                           final Resolver<?> resolver) {
+                           final Resolver<?> resolver) throws Exception {
 
         if (value == null && !forceWhenNull) {
             return;
         } else if (value == null && forceWhenNull) {
-            zkClient.createPersistent(fieldPath, true);
+            createIfNeed(curatorClient, fieldPath);
             String defaultValue = (String) resolver.get();
-            zkClient.writeData(fieldPath, defaultValue);
+            curatorClient.setData().forPath(fieldPath, defaultValue.getBytes());
         } else {
             //设置值
             resolver.set(value);
@@ -167,14 +167,14 @@ public class ZkRegister {
         if (update) {
             Updater.register(fieldPath, resolver);
             //zk订阅
-            zkClient.subscribeDataChanges(fieldPath, new DataChangeListener());
+            curatorClient.subscribeDataChanges(fieldPath, new DataChangeListener());
         }
     }
 
     private void createIfNeed(CuratorFramework curatorClient, String path) throws Exception {
         Stat stat = curatorClient.checkExists().forPath(path);
         if (stat == null) {
-            String s = curatorClient.create().forPath(path);
+            String s = curatorClient.create().creatingParentsIfNeeded().forPath(path);
             log.debug("path {} not exist, and created!", s);
         }
     }

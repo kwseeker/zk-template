@@ -9,6 +9,7 @@ import org.junit.*;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class ZkClientTest {
@@ -28,7 +29,12 @@ public class ZkClientTest {
 
     @After
     public void release() {
-        zkClient.close();
+        try {
+            TimeUnit.SECONDS.sleep(Integer.MAX_VALUE);
+            zkClient.close();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         log.info("release zkClient done");
     }
 
@@ -53,13 +59,10 @@ public class ZkClientTest {
                 log.info("handle data deleted, dataPath={}", dataPath);
             }
         });
-
-        Thread.sleep(100*1000);
     }
 
     private ZkClient createClient() {
         return new ZkClient(CLUSTER_SERVERS, SESSION_TIMEOUT_MS, CONN_TIMEOUT_MS, new StringZkSerializer());
-
     }
 
     static class StringZkSerializer implements ZkSerializer {
