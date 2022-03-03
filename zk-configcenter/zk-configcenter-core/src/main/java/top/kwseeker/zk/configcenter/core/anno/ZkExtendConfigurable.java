@@ -24,7 +24,7 @@ public @interface ZkExtendConfigurable {
     /**
      * 扩展配置的地址信息，用于找到真正的配置信息，存储在zookeeper上
      */
-    String tempKey();
+    String tempKey() default "";
 
     /**
      * 用于实现扩展存储数据操作的类,默认给出redis的操作方案（应该是不给出，并且不许指定的项）

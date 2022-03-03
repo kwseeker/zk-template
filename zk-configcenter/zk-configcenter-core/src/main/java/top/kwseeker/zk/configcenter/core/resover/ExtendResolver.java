@@ -35,7 +35,7 @@ public class ExtendResolver<T> extends Resolver<T> {
         T t = store.getValue(src);
         try {
             field.setAccessible(true);
-            field.set(clazz,t);
+            field.set(clazz, t);
         } catch (IllegalAccessException e) {
             log.debug("illegal access exception..", e);
         }

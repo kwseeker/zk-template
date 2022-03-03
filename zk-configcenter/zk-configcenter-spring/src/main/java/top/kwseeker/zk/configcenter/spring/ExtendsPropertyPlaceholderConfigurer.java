@@ -3,6 +3,7 @@ package top.kwseeker.zk.configcenter.spring;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.config.PropertyPlaceholderConfigurer;
+import org.springframework.lang.NonNull;
 
 import java.util.Properties;
 
@@ -11,7 +12,7 @@ public class ExtendsPropertyPlaceholderConfigurer extends PropertyPlaceholderCon
     private Properties props;
 
     @Override
-    protected void processProperties(ConfigurableListableBeanFactory beanFactory, Properties props)
+    protected void processProperties(@NonNull ConfigurableListableBeanFactory beanFactory, @NonNull Properties props)
             throws BeansException {
         super.processProperties(beanFactory, props);
         this.props = props;

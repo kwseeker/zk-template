@@ -9,10 +9,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Service
-@ZkTypeConfigurable(useOwnServers = false, path = "/conf/test/demo")
+@ZkTypeConfigurable(nodePath = "/conf/test/demoService")
 public class BizConfig implements Config {
 
-    @ZkExtendConfigurable(path = "keyWords", update = true, tempKey = "key_words", dataStore = CacheDataStore.class)
+    @ZkExtendConfigurable(extPath = "env", tempKey = "dev", dataStore = CacheDataStore.class)
     public static Map<String, String> config = new HashMap<>(0);
 
     @Override

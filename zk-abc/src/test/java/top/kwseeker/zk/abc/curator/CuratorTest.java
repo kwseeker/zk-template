@@ -5,6 +5,8 @@ import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.api.CuratorEvent;
+import org.apache.curator.framework.recipes.cache.NodeCache;
+import org.apache.curator.framework.recipes.cache.NodeCacheListener;
 import org.apache.curator.framework.state.ConnectionState;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.zookeeper.WatchedEvent;
@@ -88,6 +90,36 @@ public class CuratorTest {
         //
         log.debug(">>>>>>> set background operation 1");
         curatorFramework.setData().inBackground().forPath(path, "test background set".getBytes());
+    }
+
+    //https://curator.apache.org/curator-recipes/curator-cache.html
+    //这种写法依赖 recipes:5.0.0 zookeeper:3.6.0 及以上版本， 这里测试用的 zookeeper:3.5.8所以不支持这种写法
+    //@Test
+    //public void testCuratorCacheListen() {
+    //    CuratorCache curatorCache = CuratorCache.builder(curatorFramework, ROOT_PATH).build();
+    //    CuratorCacheListener listener = CuratorCacheListener.builder()
+    //            .forNodeCache(new NodeCacheListener() {
+    //                @Override
+    //                public void nodeChanged() throws Exception {
+    //                    log.info("node: data changed, new data=");
+    //                    //log.info("node:{} data changed, new data={}", curatorCache.get(), curatorCache.getCurrentData().getData());
+    //                }
+    //            }).build();
+    //    curatorCache.listenable().addListener(listener);
+    //    curatorCache.start();
+    //}
+
+    @Test
+    public void testNodeCacheListen() throws Exception {
+        NodeCache nodeCache = new NodeCache(curatorFramework, ROOT_PATH);
+        nodeCache.getListenable().addListener(new NodeCacheListener() {
+            @Override
+            public void nodeChanged() throws Exception {
+                String value = new String(nodeCache.getCurrentData().getData());
+                log.info("node:{} data changed, new data={}", nodeCache.getPath(), value);
+            }
+        });
+        nodeCache.start(true);
     }
 
     public void createIfNeed(String path) throws Exception {

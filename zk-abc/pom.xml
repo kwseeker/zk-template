@@ -13,6 +13,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>1.7.25</version>
+        </dependency>
+        <dependency>
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
             <version>7.4.0</version>
@@ -20,10 +25,38 @@
         <dependency>
             <groupId>com.101tec</groupId>
             <artifactId>zkclient</artifactId>
+            <exclusions>
+                <exclusion>
+                    <artifactId>slf4j-api</artifactId>
+                    <groupId>org.slf4j</groupId>
+                </exclusion>
+            </exclusions>
+            <!--<exclusions>-->
+            <!--    <exclusion>-->
+            <!--        <artifactId>slf4j-api</artifactId>-->
+            <!--        <groupId>org.slf4j</groupId>-->
+            <!--    </exclusion>-->
+            <!--</exclusions>-->
         </dependency>
+        <!--<dependency>-->
+        <!--    <groupId>org.apache.curator</groupId>-->
+        <!--    <artifactId>curator-framework</artifactId>-->
+        <!--    &lt;!&ndash;<exclusions>&ndash;&gt;-->
+        <!--    &lt;!&ndash;    <exclusion>&ndash;&gt;-->
+        <!--    &lt;!&ndash;        <artifactId>slf4j-api</artifactId>&ndash;&gt;-->
+        <!--    &lt;!&ndash;        <groupId>org.slf4j</groupId>&ndash;&gt;-->
+        <!--    &lt;!&ndash;    </exclusion>&ndash;&gt;-->
+        <!--    &lt;!&ndash;</exclusions>&ndash;&gt;-->
+        <!--</dependency>-->
         <dependency>
             <groupId>org.apache.curator</groupId>
-            <artifactId>curator-framework</artifactId>
+            <artifactId>curator-recipes</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.zookeeper</groupId>
+                    <artifactId>zookeeper</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -33,12 +66,6 @@
         <dependency>
             <groupId>org.apache.zookeeper</groupId>
             <artifactId>zookeeper</artifactId>
-            <exclusions>
-                <exclusion>
-                    <artifactId>slf4j-log4j12</artifactId>
-                    <groupId>org.slf4j</groupId>
-                </exclusion>
-            </exclusions>
         </dependency>
     </dependencies>
 </project>

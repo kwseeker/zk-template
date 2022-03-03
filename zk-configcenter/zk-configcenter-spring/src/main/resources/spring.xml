@@ -15,7 +15,7 @@
     </bean>
     <bean class="top.kwseeker.zk.configcenter.spring.ConfigAnnotationBeanPostProcessor">
         <constructor-arg index="0" value="${zk.servers}"/>
-        <constructor-arg index="1" value="${zk.forceWhenNull}"/>
+        <constructor-arg index="1" value="${zk.createWhenNull}"/>
     </bean>
 
     <!--annotation扫描-->

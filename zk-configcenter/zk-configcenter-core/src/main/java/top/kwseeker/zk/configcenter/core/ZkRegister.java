@@ -4,8 +4,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.framework.recipes.cache.CuratorCache;
-import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
+import org.apache.curator.framework.recipes.cache.ChildData;
+import org.apache.curator.framework.recipes.cache.NodeCache;
 import org.apache.curator.framework.recipes.cache.NodeCacheListener;
 import org.apache.curator.framework.state.ConnectionState;
 import org.apache.curator.retry.ExponentialBackoffRetry;
@@ -14,7 +14,6 @@ import top.kwseeker.zk.configcenter.core.anno.ZkExtendConfigurable;
 import top.kwseeker.zk.configcenter.core.anno.ZkFieldConfigurable;
 import top.kwseeker.zk.configcenter.core.anno.ZkTypeConfigurable;
 import top.kwseeker.zk.configcenter.core.exception.ConfigureException;
-import top.kwseeker.zk.configcenter.core.listener.DataChangeListener;
 import top.kwseeker.zk.configcenter.core.operator.Updater;
 import top.kwseeker.zk.configcenter.core.resover.ExtendResolver;
 import top.kwseeker.zk.configcenter.core.resover.Resolver;
@@ -54,7 +53,7 @@ public class ZkRegister {
      * @param clazz         需要动态管理的配置类
      * @param createWhenNull
      */
-    public final synchronized void register(final Class<?> clazz, final boolean createWhenNull) throws Exception {
+    public final synchronized void register(final Class<?> clazz, final boolean createWhenNull) {
         if (!clazz.isAnnotationPresent(ZkTypeConfigurable.class)) {
             throw new ConfigureException("without necessary zk type configuration!");
         }
@@ -90,7 +89,7 @@ public class ZkRegister {
 
     private void commonFieldHandler(final CuratorFramework zkClient, final Field field, final String classPath, final Class<?> clazz,
                                     final boolean createWhenNull) {
-        log.info("3> register common field:" + field.getName() + "type:" + field.getType().getSimpleName());
+        log.info("3> register common field:" + field.getName() + ", type:" + field.getType().getSimpleName());
 
         ZkFieldConfigurable zkFieldConfigurable = field.getAnnotation(ZkFieldConfigurable.class);
         String fieldPath = "".equals(zkFieldConfigurable.nodePath()) ?
@@ -116,8 +115,8 @@ public class ZkRegister {
 
 
     private void extendDataHandler(final CuratorFramework zkClient, final Field field, final String classPath, final Class<?> clazz,
-                                   final boolean createWhenNull) throws Exception {
-        log.info("3> register extend field:" + field.getName() + "type:" + field.getType().getSimpleName());
+                                   final boolean createWhenNull) {
+        log.info("3> register extend field:" + field.getName() + ", type:" + field.getType().getSimpleName());
 
         ZkExtendConfigurable zkExtendConfigurable = field.getAnnotation(ZkExtendConfigurable.class);
         String fieldPath = "".equals(zkExtendConfigurable.extPath()) ?
@@ -148,36 +147,47 @@ public class ZkRegister {
                            final String fieldPath,
                            final boolean createWhenNull,
                            final boolean update,
-                           final Resolver<?> resolver) throws Exception {
-        Stat stat = curatorClient.checkExists().forPath(fieldPath);
-        if (stat == null) {
-            if (!createWhenNull) {
-                return;
+                           final Resolver<?> resolver) {
+        try {
+            Stat stat = curatorClient.checkExists().forPath(fieldPath);
+            String rawValue = null;
+            if (stat == null) {
+                if (!createWhenNull) {
+                    return;
+                } else {
+                    //节点不存在, 创建并设置默认值
+                    String path = curatorClient.create().creatingParentsIfNeeded().forPath(fieldPath);
+                    String defaultValue = (String)resolver.get();
+                    curatorClient.setData().forPath(fieldPath, defaultValue.getBytes());
+                    resolver.set(defaultValue);
+                    log.debug("path {} not exist, now created data: {}", path, defaultValue);
+                }
             } else {
-                String s = curatorClient.create().creatingParentsIfNeeded().forPath(fieldPath);
-                log.debug("path {} not exist, and created!", s);
+                byte[] value = curatorClient.getData().forPath(fieldPath);
+                resolver.set(new String(value));
             }
-        } else {
-            byte[] value = curatorClient.getData().forPath(fieldPath);
-            resolver.set(new String(value));
-        }
 
-        //动态更新
-        if (update) {
-            Updater.register(fieldPath, resolver);
-            //zk订阅
-            CuratorCache curatorCache = CuratorCache.builder(curatorClient, fieldPath).build();
-            CuratorCacheListener listener = CuratorCacheListener.builder()
-                    .forNodeCache(new NodeCacheListener() {
-                        @Override
-                        public void nodeChanged() throws Exception {
-                            log.debug("node:{} data changed", fieldPath);
-                            byte[] bytes = curatorClient.getData().forPath(fieldPath);
-                            Updater.update(fieldPath, new String(bytes));
+            //动态更新
+            if (update) {
+                Updater.register(fieldPath, resolver);
+                //zk订阅
+                NodeCache nodeCache = new NodeCache(curatorClient, fieldPath);
+                nodeCache.getListenable().addListener(new NodeCacheListener() {
+                    @Override
+                    public void nodeChanged() throws Exception {
+                        ChildData childData = nodeCache.getCurrentData();
+                        if (childData != null) {
+                            String value = new String(childData.getData());
+                            log.info("node:{} data changed, new data={}", nodeCache.getPath(), value);
+                            Updater.update(fieldPath, value);
                         }
-                    }).build();
-            curatorCache.listenable().addListener(listener);
-            curatorCache.start();
+                    }
+                });
+                nodeCache.start(true);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("subscribe failed : e={}", e.getMessage());
         }
     }
 
